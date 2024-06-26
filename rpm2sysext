@@ -1,0 +1,91 @@
+#!/bin/bash
+# This script converts an RPM file to a systemd sysext extension.
+
+# What this script will do:
+# 1. Get the package name from the RPM file
+# 2. Get the distro name and version from /etc/os-release
+# 3. Create a directory structure for the systemd sysext extension
+# 4. Extract the RPM file contents into that directory structure
+# 5. Create a systemd-sysext manifest for the extension
+# 6. Finally, create a squashfs image of the extension to be used with systemd-sysext
+# 
+# The script will output the name of the squashfs image created.
+
+# First argument should be the RPM file to convert. We will get the data from there
+RPM_FILE=$(realpath $1)
+: ${CLEAN_BUILD_ID:=1}
+
+function usage {
+    echo "Usage: $0 <RPM_FILE>"
+    exit 1
+}
+
+if [ -z "$RPM_FILE" ]; then
+    usage
+fi
+
+if [ ! -f "$RPM_FILE" ]; then
+    echo "File $RPM_FILE does not exist"
+    usage
+fi
+
+# Get the package name of the RPM
+
+PACKAGE_NAME=$(rpm -qp --queryformat "%{NAME}" $RPM_FILE)
+
+# Declare a sysext name I guess
+: ${SYSEXT_NAME:=$PACKAGE_NAME}
+
+# Import /etc/os-release to get distro data
+
+source /etc/os-release
+
+# Create the directory structure for the systemd sysext extension, we should delete them already exists
+# 
+function mkdir_delete_if_exists {
+    if [ -d "$1" ]; then
+        rm -rf $1
+    fi
+    mkdir -p $1
+}
+
+SYSEXT_DIR="${PWD}/${SYSEXT_NAME}"
+SYSEXT_OUTPUT="${PWD}/${SYSEXT_NAME}.raw"
+
+function cleanup {
+    rm -rf $SYSEXT_DIR
+    rm -f $SYSEXT_OUTPUT
+}
+# extract RPM to current directory
+# path to RPM is the argument
+function extract_rpm {
+    local rpm_file=$1
+    rpm2cpio $rpm_file | cpio -idmv
+    # Now, clean up usr/lib/.build-id if flag is set
+    # echo "CLEAN_BUILD_ID: $CLEAN_BUILD_ID"
+    if [ "$CLEAN_BUILD_ID" -eq 1 ]; then
+        rm -rfv usr/lib/.build-id
+    fi
+}
+
+extension_release="""ID=$ID
+VERSION_ID=$VERSION_ID
+"""
+
+function install_manifest {
+    mkdir -p usr/lib/extension-release.d
+    echo "$extension_release" > usr/lib/extension-release.d/extension-release.$SYSEXT_NAME
+}
+
+function main {
+    mkdir_delete_if_exists $SYSEXT_DIR
+    pushd $SYSEXT_DIR
+    extract_rpm $RPM_FILE
+    install_manifest
+    popd
+    mksquashfs $SYSEXT_DIR $SYSEXT_OUTPUT
+}
+
+echo $SYSEXT_OUTPUT
+
+main
