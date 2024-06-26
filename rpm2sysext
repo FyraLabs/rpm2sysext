@@ -10,13 +10,16 @@
 # 6. Finally, create a squashfs image of the extension to be used with systemd-sysext
 # 
 # The script will output the name of the squashfs image created.
+ARGS=$@
+: ${CLEAN_BUILD_ID:=1} # Clean up build-id directory by default
 
-# First argument should be the RPM file to convert. We will get the data from there
+# Arguments are the RPM file(s) to convert
+
+
 RPM_FILE=$(realpath $1)
-: ${CLEAN_BUILD_ID:=1}
 
 function usage {
-    echo "Usage: $0 <RPM_FILE>"
+    echo "Usage: $0 <RPM_FILES> ..."
     exit 1
 }
 
@@ -24,14 +27,26 @@ if [ -z "$RPM_FILE" ]; then
     usage
 fi
 
-if [ ! -f "$RPM_FILE" ]; then
-    echo "File $RPM_FILE does not exist"
-    usage
-fi
+# returns array of absolute paths to RPM files
+function find_rpms {
+    local rpms=()
+    for arg in $ARGS; do
+        if [ -f "$arg" ]; then
+            rpms+=($(realpath $arg))
+        else
+            echo "File $arg does not exist"
+            usage
+        fi
+    done
+    echo ${rpms[@]}
+}
 
-# Get the package name of the RPM
+RPM_FILES=$(find_rpms)
 
-PACKAGE_NAME=$(rpm -qp --queryformat "%{NAME}" $RPM_FILE)
+# Get package name from first RPM only
+PACKAGE_NAME=$(rpm -qp --queryformat "%{NAME}" $RPM_FILE | head -n 1)
+
+# PACKAGE_NAME=$(rpm -qp --queryformat "%{NAME}" $RPM_FILE)
 
 # Declare a sysext name I guess
 : ${SYSEXT_NAME:=$PACKAGE_NAME}
@@ -58,13 +73,25 @@ function cleanup {
 }
 # extract RPM to current directory
 # path to RPM is the argument
-function extract_rpm {
-    local rpm_file=$1
-    rpm2cpio $rpm_file | cpio -idmv
-    # Now, clean up usr/lib/.build-id if flag is set
-    # echo "CLEAN_BUILD_ID: $CLEAN_BUILD_ID"
+# function extract_rpm {
+#     local rpm_file=$1
+#     rpm2cpio $rpm_file | cpio -idmv
+#     # Now, clean up usr/lib/.build-id if flag is set
+#     # echo "CLEAN_BUILD_ID: $CLEAN_BUILD_ID"
+#     if [ "$CLEAN_BUILD_ID" -eq 1 ]; then
+#         rm -rfv usr/lib/.build-id
+#     fi
+# }
+# 
+function extract_rpms {
+    for rpm_file in $RPM_FILES; do
+        echo "Extracting $rpm_file"
+        rpm2cpio $rpm_file | cpio -idm
+        # Now, clean up usr/lib/.build-id if flag is set
+        # echo "CLEAN_BUILD_ID: $CLEAN_BUILD_ID"
+    done
     if [ "$CLEAN_BUILD_ID" -eq 1 ]; then
-        rm -rfv usr/lib/.build-id
+        rm -rf usr/lib/.build-id
     fi
 }
 
@@ -77,15 +104,17 @@ function install_manifest {
     echo "$extension_release" > usr/lib/extension-release.d/extension-release.$SYSEXT_NAME
 }
 
+MKSQUASHFS_ARGS="-noappend -quiet -comp zstd"
+
 function main {
     mkdir_delete_if_exists $SYSEXT_DIR
     pushd $SYSEXT_DIR
-    extract_rpm $RPM_FILE
+    extract_rpms
     install_manifest
     popd
-    mksquashfs $SYSEXT_DIR $SYSEXT_OUTPUT
+    mksquashfs $SYSEXT_DIR $SYSEXT_OUTPUT $MKSQUASHFS_ARGS 
+    echo $SYSEXT_OUTPUT
 }
 
-echo $SYSEXT_OUTPUT
 
 main
