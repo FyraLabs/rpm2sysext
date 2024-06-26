@@ -7,13 +7,13 @@ It simply works by extracting the RPM package contents into a directory, writing
 ## Usage
 
 ```bash
-./rpm2sysext.sh <rpm-packages> ...
+./rpm2sysext <rpm-packages> ...
 ```
 
 You can also set a custom name for the systemd-sysext image by setting the `SYSEXT_NAME` environment variable.
 
 ```bash
-SYSEXT_NAME=my-extension ./rpm2sysext.sh <rpm-packages> ...
+SYSEXT_NAME=my-extension ./rpm2sysext <rpm-packages> ...
 ```
 
 This will create a `.raw` file in the current directory. The file name should be printed to the console after the script finishes running.
