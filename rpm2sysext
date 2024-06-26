@@ -106,7 +106,7 @@ function install_manifest {
 
 MKSQUASHFS_ARGS="-noappend -quiet -comp zstd"
 
-function main {
+function rpm2sysext {
     mkdir_delete_if_exists $SYSEXT_DIR
     pushd $SYSEXT_DIR
     extract_rpms
@@ -116,5 +116,8 @@ function main {
     echo $SYSEXT_OUTPUT
 }
 
+# check if we're sourcing this script
 
-main
+if [ "${BASH_SOURCE[0]}" == "${0}" ]; then
+    rpm2sysext
+fi
